@@ -1,0 +1,5 @@
+.nav-tab-wrapper {
+    margin-bottom: 15px;
+}
+/* WordPress already provides .nav-tab-active styling,
+   but you can add more specific styles if needed. */
