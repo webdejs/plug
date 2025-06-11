@@ -1,0 +1,39 @@
+# نام گردش کار شما
+name: Build WordPress Plugin Assets
+
+# این گردش کار چه زمانی اجرا شود؟ (در اینجا: هر بار که کدی پوش می‌شود)
+on:
+  push:
+    branches:
+      - main  # یا هر شاخه‌ای که روی آن کار می‌کنید
+
+jobs:
+  build:
+    # استفاده از یک سرور مجازی اوبونتو برای اجرای دستورات
+    runs-on: ubuntu-latest
+
+    steps:
+      # مرحله اول: کدهای شما را از ریپازیتوری دریافت می‌کند
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # مرحله دوم: Node.js را نصب و آماده‌سازی می‌کند
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # می‌توانید از نسخه‌های جدیدتر هم استفاده کنید
+
+      # مرحله سوم: نصب وابستگی‌های پروژه
+      - name: Install dependencies
+        run: npm install
+
+      # مرحله چهارم: اجرای دستور ساخت (بیلد)
+      - name: Build assets
+        run: npm run build
+
+      # مرحله پنجم (اختیاری اما بسیار مفید): آپلود فایل‌های ساخته‌شده
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemacraft-build
+          path: admin/build/ # مسیری که فایل‌های بیلد شده در آن قرار دارند
