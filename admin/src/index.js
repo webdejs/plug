@@ -1,83 +1,104 @@
 /**
  * Entry point for the SchemaCraft metabox React application.
+ *
+ * This version is refactored to use modern React Hooks (useState, useEffect)
+ * and WordPress data hooks (useSelect, useDispatch) for better performance and maintainability.
  */
 import './style.scss';
 
-import { render, Component, Fragment } from '@wordpress/element';
+import { render, Fragment, useState, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Button, DropdownMenu, MenuGroup, MenuItem, TextControl, Spinner } from '@wordpress/components';
+import { useSelect, useDispatch } from '@wordpress/data';
 
-class App extends Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            selectedSchemaType: '',
-            courseName: '',
-            courseProvider: '',
-            initialLoadDone: false,
-            isDropdownOpen: false,
+// --- Main App Component ---
+const App = () => {
+    // WordPress Data Store Integration using Hooks
+    const { postMeta, isSaving, isNewPost } = useSelect((select) => {
+        const editorSelect = select('core/editor');
+        if (!editorSelect) {
+            return { postMeta: undefined, isSaving: false, isNewPost: true };
+        }
+        return {
+            postMeta: editorSelect.getEditedPostAttribute('meta'),
+            isSaving: editorSelect.isSavingPost(),
+            isNewPost: editorSelect.isEditedPostNew(),
         };
-        // console.log('SchemaCraftData from PHP:', SchemaCraftData);
+    }, []);
 
-        this.availableSchemas = SchemaCraftData.availableSchemas || [
-            { value: 'course', label: __('Course', 'schemacraft') },
-            { value: 'article', label: __('Article', 'schemacraft') },
-        ];
-    }
+    const { editPost } = useDispatch('core/editor');
 
-    componentDidMount() {
-        this.loadSchemaData();
-    }
+    // Component State using Hooks
+    const [selectedSchemaType, setSelectedSchemaType] = useState('');
+    const [courseName, setCourseName] = useState('');
+    const [courseProvider, setCourseProvider] = useState('');
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
 
-    loadSchemaData = () => {
-        if ( !window.wp || !wp.data || !wp.data.select || !wp.data.select('core/editor') ) {
-            console.warn('SchemaCraft: wp.data.select(\'core/editor\') not available for loading meta.');
-            this.setState({ initialLoadDone: true });
-            return;
+    // This effect runs once on mount to initialize the state from post meta
+    useEffect(() => {
+        if (postMeta && !initialLoadDone) {
+            setSelectedSchemaType(postMeta._schemacraft_selected_schema_type || '');
+            setCourseName(postMeta._schemacraft_course_name || '');
+            setCourseProvider(postMeta._schemacraft_course_provider || '');
+            setInitialLoadDone(true);
+        } else if (!postMeta) {
+             // Handles cases where postMeta is not yet available
+            setInitialLoadDone(true);
         }
+    }, [postMeta, initialLoadDone]);
 
-        const meta = wp.data.select('core/editor').getEditedPostAttribute('meta');
 
-        if (typeof meta !== 'undefined') {
-            this.setState({
-                selectedSchemaType: meta._schemacraft_selected_schema_type || '',
-                courseName: meta._schemacraft_course_name || '',
-                courseProvider: meta._schemacraft_course_provider || '',
-                initialLoadDone: true,
-            });
-        } else {
-            // This case might occur if the editor is not fully initialized or if it's a new post without any meta yet.
-            // console.warn('SchemaCraft: Post meta was undefined on load (this may be normal for new posts).');
-            this.setState({ initialLoadDone: true });
-        }
-    };
+    // Available schemas (could come from PHP in the future)
+    const availableSchemas = SchemaCraftData.availableSchemas || [
+        { value: 'course', label: __('Course', 'schemacraft') },
+        { value: 'article', label: __('Article', 'schemacraft') },
+    ];
 
-    toggleDropdown = () => {
-        this.setState((prevState) => ({ isDropdownOpen: !prevState.isDropdownOpen }));
-    };
+    // --- Event Handlers ---
 
-    handleSchemaSelect = (schemaValue) => {
-        // Preserve existing data if re-selecting the same type or for specific fields
-        const currentCourseName = schemaValue === 'course' ? this.state.courseName : '';
-        const currentCourseProvider = schemaValue === 'course' ? this.state.courseProvider : '';
-
-        this.setState({
-            selectedSchemaType: schemaValue,
-            isDropdownOpen: false,
-            courseName: currentCourseName,
-            courseProvider: currentCourseProvider,
-            // Reset other schema type fields here if they exist
+    const handleSchemaSelect = (schemaValue) => {
+        setSelectedSchemaType(schemaValue);
+        // Save the new schema type to the database
+        editPost({
+            meta: {
+                _schemacraft_selected_schema_type: schemaValue,
+            },
         });
-        // Staging changes to Gutenberg will be handled in the next step
     };
 
-    handleFieldChange = (fieldName, value) => {
-        this.setState({ [fieldName]: value });
-        // Staging changes to Gutenberg will be handled in the next step
+    const handleFieldChange = (metaKey, value) => {
+        // Update the local state first for a responsive UI
+        if (metaKey === '_schemacraft_course_name') setCourseName(value);
+        if (metaKey === '_schemacraft_course_provider') setCourseProvider(value);
+
+        // Save the change to the database
+        editPost({
+            meta: {
+                [metaKey]: value,
+            },
+        });
     };
 
-    renderSchemaFields = () => {
-        const { selectedSchemaType, courseName, courseProvider } = this.state;
+    const handleClearSchema = () => {
+        // Clear local state
+        setSelectedSchemaType('');
+        setCourseName('');
+        setCourseProvider('');
+
+        // Clear meta fields in the database
+        editPost({
+            meta: {
+                _schemacraft_selected_schema_type: '',
+                _schemacraft_course_name: '',
+                _schemacraft_course_provider: '',
+            },
+        });
+    };
+
+
+    // --- Rendering Logic ---
+
+    const renderSchemaFields = () => {
         if (!selectedSchemaType) return null;
 
         switch (selectedSchemaType) {
@@ -87,13 +108,13 @@ class App extends Component {
                         <TextControl
                             label={__('Course Name', 'schemacraft')}
                             value={courseName}
-                            onChange={(value) => this.handleFieldChange('courseName', value)}
+                            onChange={(value) => handleFieldChange('_schemacraft_course_name', value)}
                             help={__('Enter the name of the course.', 'schemacraft')}
                         />
                         <TextControl
                             label={__('Provider', 'schemacraft')}
                             value={courseProvider}
-                            onChange={(value) => this.handleFieldChange('courseProvider', value)}
+                            onChange={(value) => handleFieldChange('_schemacraft_course_provider', value)}
                             help={__('Enter the organization or person providing the course.', 'schemacraft')}
                         />
                     </Fragment>
@@ -105,75 +126,75 @@ class App extends Component {
         }
     };
 
-    render() {
-        const { selectedSchemaType, initialLoadDone, isDropdownOpen } = this.state;
+    // --- Main Component Return ---
 
-        // Show loading spinner only for existing posts during initial data fetch
-        if (!initialLoadDone && SchemaCraftData.postId) {
-            return (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100px' }}>
-                    <Spinner />
-                    <p style={{marginLeft: '8px'}}>{__('Loading schema data...', 'schemacraft')}</p>
-                </div>
-            );
-        }
-
-        const selectedSchemaLabel = selectedSchemaType
-            ? (this.availableSchemas.find(s => s.value === selectedSchemaType)?.label || selectedSchemaType)
-            : '';
-
+    if (!initialLoadDone && !isNewPost) {
         return (
-            <Fragment>
-                <h2>{__('SchemaCraft Options', 'schemacraft')}</h2>
-
-                {!selectedSchemaType && ( // Show "Add" button only if no schema type is selected
-                    <Button variant="primary" onClick={this.toggleDropdown} aria-expanded={isDropdownOpen}>
-                        {__('Add Schema Type', 'schemacraft')}
-                    </Button>
-                )}
-
-                {isDropdownOpen && !selectedSchemaType && ( // Show dropdown only if open and no type selected
-                     <DropdownMenu
-                        label={__('Select Schema Type', 'schemacraft')}
-                        onClose={ () => this.setState({ isDropdownOpen: false }) }
-                    >
-                        { ( { onClose } ) => (
-                            <MenuGroup label={__('Available Schema Types', 'schemacraft')}>
-                                {this.availableSchemas.map((schema) => (
-                                    <MenuItem
-                                        key={schema.value}
-                                        onClick={() => { this.handleSchemaSelect(schema.value); onClose(); }}
-                                    >
-                                        {schema.label}
-                                    </MenuItem>
-                                ))}
-                            </MenuGroup>
-                        ) }
-                    </DropdownMenu>
-                )}
-
-                {selectedSchemaType && ( // Show fields and schema type info if a type is selected
-                    <div style={{marginTop: '15px'}}>
-                        <h3>
-                            {__('Schema:', 'schemacraft')} <strong>{selectedSchemaLabel}</strong>
-                            {/* Add a button/link here to change/clear the schema type */}
-                            <Button
-                                variant="link"
-                                style={{ marginLeft: '10px', textDecoration: 'underline' }}
-                                onClick={() => this.setState({ selectedSchemaType: '', courseName: '', courseProvider: '' /* reset all fields */ })}
-                            >
-                                {__('Change / Clear', 'schemacraft')}
-                            </Button>
-                        </h3>
-                        {this.renderSchemaFields()}
-                    </div>
-                )}
-            </Fragment>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100px' }}>
+                <Spinner />
+                <p style={{ marginLeft: '8px' }}>{__('Loading schema data...', 'schemacraft')}</p>
+            </div>
         );
     }
-}
+    
+    const selectedSchemaLabel = selectedSchemaType
+        ? (availableSchemas.find(s => s.value === selectedSchemaType)?.label || selectedSchemaType)
+        : '';
 
-document.addEventListener('DOMContentLoaded', function() {
+    return (
+        <Fragment>
+            <h2>{__('SchemaCraft Options', 'schemacraft')}</h2>
+
+            {!selectedSchemaType && (
+                <DropdownMenu
+                    icon={null}
+                    label={__('Select Schema Type', 'schemacraft')}
+                    toggleProps={{
+                        children: __('Add Schema Type', 'schemacraft'),
+                        variant: 'primary',
+                    }}
+                >
+                    {({ onClose }) => (
+                        <MenuGroup label={__('Available Schema Types', 'schemacraft')}>
+                            {availableSchemas.map((schema) => (
+                                <MenuItem
+                                    key={schema.value}
+                                    onClick={() => {
+                                        handleSchemaSelect(schema.value);
+                                        onClose();
+                                    }}
+                                >
+                                    {schema.label}
+                                </MenuItem>
+                            ))}
+                        </MenuGroup>
+                    )}
+                </DropdownMenu>
+            )}
+
+            {selectedSchemaType && (
+                <div style={{ marginTop: '15px' }}>
+                    <h3>
+                        {__('Schema:', 'schemacraft')} <strong>{selectedSchemaLabel}</strong>
+                        <Button
+                            variant="link"
+                            style={{ marginLeft: '10px', color: '#cc0000', textDecoration: 'underline' }}
+                            onClick={handleClearSchema}
+                        >
+                            {__('Change / Clear', 'schemacraft')}
+                        </Button>
+                    </h3>
+                    {renderSchemaFields()}
+                </div>
+            )}
+
+            {isSaving && <p><em>{__('Saving...', 'schemacraft')}</em></p>}
+        </Fragment>
+    );
+};
+
+// --- Initial Render ---
+document.addEventListener('DOMContentLoaded', function () {
     const rootElement = document.getElementById('schemacraft-metabox-react-root');
     if (rootElement) {
         render(<App />, rootElement);
