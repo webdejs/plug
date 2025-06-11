@@ -53,6 +53,14 @@ final class SchemaCraft_Main {
      */
     public $settings_manager;
 
+    /**
+     * The metabox manager instance.
+     *
+     * @since 0.2.0
+     * @var   SchemaCraft_Metabox
+     */
+    public $metabox_manager;
+
 
     /**
      * Ensures only one instance of the class is loaded or can be loaded.
@@ -94,6 +102,12 @@ final class SchemaCraft_Main {
             add_action( 'admin_menu', array( $this, 'admin_menu_setup' ) );
             add_action( 'admin_init', array( $this->settings_manager, 'register_settings' ) );
             add_action( 'admin_enqueue_scripts', array( $this->settings_manager, 'enqueue_admin_assets' ) );
+
+        // Metabox Manager
+        require_once SCHEMACRAFT_PLUGIN_DIR . 'admin/class-schemacraft-metabox.php';
+        $this->metabox_manager = new SchemaCraft_Metabox();
+        add_action( 'add_meta_boxes', array( $this->metabox_manager, 'register_meta_box' ) );
+        add_action( 'admin_enqueue_scripts', array( $this->metabox_manager, 'enqueue_metabox_assets' ) );
         }
         // Add other hooks (public, etc.) here
     }
